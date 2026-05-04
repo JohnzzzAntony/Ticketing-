@@ -1,0 +1,234 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  AGENT
+  EMPLOYEE
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING
+  RESOLVED
+  CLOSED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum NotificationType {
+  TICKET_CREATED
+  TICKET_ASSIGNED
+  STATUS_UPDATED
+  NEW_REPLY
+  SLA_WARNING
+  SLA_BREACHED
+}
+
+model User {
+  id            String       @id @default(cuid())
+  email         String       @unique
+  name          String
+  passwordHash  String
+  role          Role         @default(EMPLOYEE)
+  departmentId  String?
+  department    Department?  @relation(fields: [departmentId], references: [id])
+  avatar        String?
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  createdTickets  Ticket[]     @relation("TicketCreator")
+  assignedTickets Ticket[]     @relation("TicketAssignee")
+  replies         Reply[]
+  internalNotes   InternalNote[]
+  notifications   Notification[]
+  auditLogs       AuditLog[]
+  activityLogs    ActivityLog[]
+
+  @@map("users")
+}
+
+model Department {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users      User[]
+  categories Category[]
+
+  @@map("departments")
+}
+
+model Category {
+  id           String      @id @default(cuid())
+  name         String
+  description  String?
+  departmentId String
+  department   Department  @relation(fields: [departmentId], references: [id])
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@unique([name, departmentId])
+  @@map("categories")
+}
+
+model Ticket {
+  id          String       @id @default(cuid())
+  ticketId    String       @unique
+  title       String
+  description String
+  category    String
+  priority    Priority     @default(MEDIUM)
+  status      TicketStatus @default(OPEN)
+  tags        String       @default("")
+  creatorId   String
+  creator     User         @relation("TicketCreator", fields: [creatorId], references: [id])
+  assigneeId  String?
+  assignee    User?        @relation("TicketAssignee", fields: [assigneeId], references: [id])
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  replies       Reply[]
+  internalNotes InternalNote[]
+  attachments   Attachment[]
+  notifications Notification[]
+  sla           SLARecord?
+  activityLogs  ActivityLog[]
+
+  @@map("tickets")
+}
+
+model Reply {
+  id        String   @id @default(cuid())
+  content   String
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("replies")
+}
+
+model InternalNote {
+  id        String   @id @default(cuid())
+  content   String
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("internal_notes")
+}
+
+model Attachment {
+  id        String   @id @default(cuid())
+  filename  String
+  url       String
+  fileType  String
+  fileSize  Int
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@map("attachments")
+}
+
+model SLARecord {
+  id               String   @id @default(cuid())
+  ticketId         String   @unique
+  ticket           Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  responseDeadline DateTime
+  resolutionDeadline DateTime
+  firstResponseAt  DateTime?
+  resolvedAt       DateTime?
+  isBreached       Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("sla_records")
+}
+
+model Notification {
+  id         String           @id @default(cuid())
+  type       NotificationType
+  title      String
+  message    String
+  userId     String
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ticketId   String?
+  ticket     Ticket?          @relation(fields: [ticketId], references: [id])
+  isRead     Boolean          @default(false)
+  createdAt  DateTime         @default(now())
+
+  @@map("notifications")
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  action    String
+  details   String?
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@map("activity_logs")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String
+  entity    String
+  entityId  String?
+  details   String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+model KnowledgeBaseArticle {
+  id          String   @id @default(cuid())
+  title       String
+  content     String
+  category    String
+  isPublished Boolean  @default(false)
+  views       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("knowledge_base_articles")
+}
+
+model SLAConfig {
+  id                 String   @id @default(cuid())
+  category           String   @unique
+  responseTimeHours  Int      @default(4)
+  resolutionTimeHours Int     @default(24)
+  priority           Priority @default(MEDIUM)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@map("sla_configs")
+}
