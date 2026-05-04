@@ -1,13 +1,14 @@
 'use client';
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useAppStore } from "./store";
+import { useNotificationSocket } from "@/hooks/use-notification-socket";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Bell, Check, ExternalLink } from "lucide-react";
+import { Bell, Check, ExternalLink, Wifi } from "lucide-react";
 
 interface Notification {
   id: string;
@@ -37,7 +38,35 @@ export function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
   const setCurrentView = useAppStore((s) => s.setCurrentView);
+  const user = useAppStore((s) => s.user);
   const notificationsRef = useRef<Notification[]>([]);
+
+  // WebSocket real-time notifications
+  const { onNotification } = useNotificationSocket(user?.id ?? null);
+
+  // Handle incoming WebSocket notification
+  const handleSocketNotification = useCallback((notification: Record<string, unknown>) => {
+    const newNotification: Notification = {
+      id: notification.id as string || `ws-${Date.now()}`,
+      title: notification.title as string,
+      message: notification.message as string,
+      createdAt: notification.createdAt as string || new Date().toISOString(),
+      read: notification.isRead as boolean || false,
+      type: notification.type as string | undefined,
+    };
+
+    setNotifications((prev) => {
+      // Avoid duplicates - check if notification ID already exists
+      if (prev.some((n) => n.id === newNotification.id)) return prev;
+      return [newNotification, ...prev];
+    });
+  }, []);
+
+  // Subscribe to WebSocket notifications
+  useEffect(() => {
+    const unsubscribe = onNotification(handleSocketNotification);
+    return unsubscribe;
+  }, [onNotification, handleSocketNotification]);
 
   useEffect(() => {
     notificationsRef.current = notifications;
@@ -45,7 +74,7 @@ export function NotificationBell() {
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  // Fetch and poll notifications
+  // Fetch and poll notifications (fallback)
   useEffect(() => {
     let cancelled = false;
 
@@ -121,7 +150,10 @@ export function NotificationBell() {
       <PopoverContent className="w-80 p-0" align="end" sideOffset={8}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b">
-          <h4 className="text-sm font-semibold">Notifications</h4>
+          <div className="flex items-center gap-2">
+            <h4 className="text-sm font-semibold">Notifications</h4>
+            <Wifi className="h-3 w-3 text-emerald-500" />
+          </div>
           {unreadCount > 0 && (
             <Button
               variant="ghost"

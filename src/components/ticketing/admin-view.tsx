@@ -68,6 +68,7 @@ import {
   FileText,
   UserCog,
 } from 'lucide-react'
+import { toast } from 'sonner'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -240,8 +241,11 @@ function CategoriesTab() {
       }
       resetForm()
       await fetchData()
+      toast.success(editId ? 'Category updated' : 'Category created')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed')
+      const message = err instanceof Error ? err.message : 'Failed'
+      setError(message)
+      toast.error(message)
     } finally {
       setSubmitting(false)
     }
@@ -257,8 +261,11 @@ function CategoriesTab() {
       }
       setDeleteId(null)
       await fetchData()
+      toast.success('Category deleted')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete')
+      const message = err instanceof Error ? err.message : 'Failed to delete'
+      setError(message)
+      toast.error(message)
     }
   }
 
@@ -488,8 +495,11 @@ function DepartmentsTab() {
       }
       resetForm()
       await fetchData()
+      toast.success('Department created')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed')
+      const message = err instanceof Error ? err.message : 'Failed'
+      setError(message)
+      toast.error(message)
     } finally {
       setSubmitting(false)
     }
@@ -692,8 +702,11 @@ function UsersTab() {
       }
       resetForm()
       await fetchData()
+      toast.success('User created')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed')
+      const message = err instanceof Error ? err.message : 'Failed'
+      setError(message)
+      toast.error(message)
     } finally {
       setSubmitting(false)
     }
@@ -712,8 +725,11 @@ function UsersTab() {
         throw new Error(data.error || 'Failed to update')
       }
       await fetchData()
+      toast.success(`User ${!user.isActive ? 'activated' : 'deactivated'}`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed')
+      const message = err instanceof Error ? err.message : 'Failed'
+      setError(message)
+      toast.error(message)
     } finally {
       setTogglingId(null)
     }
@@ -971,8 +987,11 @@ function SLATab() {
       }
       resetForm()
       await fetchData()
+      toast.success('SLA config saved')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed')
+      const message = err instanceof Error ? err.message : 'Failed'
+      setError(message)
+      toast.error(message)
     } finally {
       setSubmitting(false)
     }

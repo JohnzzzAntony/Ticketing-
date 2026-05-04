@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useAppStore } from "./store"
 import { formatDistanceToNow, format } from "date-fns"
 import ReactMarkdown from "react-markdown"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -415,8 +416,9 @@ export function TicketDetail() {
       })
       if (!res.ok) throw new Error("Failed to update status")
       await fetchTicket()
-    } catch {
-      // Could show toast here
+      toast.success(`Status updated to ${statusLabels[newStatus]}`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update status")
     } finally {
       setUpdatingStatus(false)
     }
@@ -432,8 +434,9 @@ export function TicketDetail() {
       })
       if (!res.ok) throw new Error("Failed to update priority")
       await fetchTicket()
-    } catch {
-      // Could show toast
+      toast.success(`Priority updated to ${priorityLabels[newPriority]}`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update priority")
     }
   }
 
@@ -446,9 +449,11 @@ export function TicketDetail() {
         body: JSON.stringify({ assigneeId }),
       })
       if (!res.ok) throw new Error("Failed to assign ticket")
+      const agentName = agents.find((a) => a.id === assigneeId)?.name || "agent"
       await fetchTicket()
-    } catch {
-      // Could show toast
+      toast.success(`Ticket assigned to ${agentName}`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to assign ticket")
     }
   }
 
@@ -461,9 +466,11 @@ export function TicketDetail() {
         body: JSON.stringify({}),
       })
       if (!res.ok) throw new Error("Failed to auto-assign ticket")
+      const data = await res.json()
       await fetchTicket()
-    } catch {
-      // Could show toast
+      toast.success(`Ticket auto-assigned to ${data.assignee?.name || "agent"}`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to auto-assign ticket")
     }
   }
 
@@ -479,8 +486,9 @@ export function TicketDetail() {
       if (!res.ok) throw new Error("Failed to add reply")
       setReplyContent("")
       await fetchTicket()
-    } catch {
-      // Could show toast
+      toast.success("Reply sent")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to add reply")
     } finally {
       setSubmittingReply(false)
     }
@@ -498,8 +506,9 @@ export function TicketDetail() {
       if (!res.ok) throw new Error("Failed to add note")
       setNoteContent("")
       await fetchTicket()
-    } catch {
-      // Could show toast
+      toast.success("Internal note added")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to add note")
     } finally {
       setSubmittingNote(false)
     }
@@ -519,8 +528,9 @@ export function TicketDetail() {
       a.click()
       window.URL.revokeObjectURL(url)
       document.body.removeChild(a)
-    } catch {
-      // Could show toast
+      toast.success("Ticket exported")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Export failed")
     }
   }
 

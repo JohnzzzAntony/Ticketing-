@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { emitNotification } from "@/lib/notify";
 import { TicketStatus, Priority } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 
@@ -131,6 +132,13 @@ export async function PATCH(
 
         // Create notification for status change
         if (ticket.creatorId !== userId) {
+          const statusNotificationData = {
+            type: "STATUS_UPDATED",
+            title: "Ticket Status Updated",
+            message: `Ticket ${ticket.ticketId} status changed from ${oldStatus} to ${newStatus}`,
+            isRead: false,
+            createdAt: new Date().toISOString(),
+          };
           await db.notification.create({
             data: {
               type: "STATUS_UPDATED",
@@ -140,6 +148,9 @@ export async function PATCH(
               ticketId: id,
             },
           });
+
+          // Emit real-time notification via WebSocket
+          emitNotification(ticket.creatorId, statusNotificationData);
         }
 
         // Check SLA on first response (when status changes from OPEN)

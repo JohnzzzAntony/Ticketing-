@@ -51,6 +51,8 @@ import {
   Eye,
   Clock,
   AlertCircle,
+  Download,
+  Calendar as CalendarIcon,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -58,6 +60,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { toast } from "sonner"
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -293,6 +298,7 @@ function BoardCard({ ticket, onClick }: { ticket: TicketItem; onClick: () => voi
 
 export function TicketsView() {
   const { navigateToTicket, isCreateTicketOpen, setIsCreateTicketOpen, searchQuery } = useAppStore()
+  const user = useAppStore((s) => s.user)
 
   // View mode
   const [viewMode, setViewMode] = useState<"table" | "board">("table")
@@ -302,6 +308,11 @@ export function TicketsView() {
   const [priorityFilter, setPriorityFilter] = useState<string>("all")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
   const [sortBy, setSortBy] = useState<string>("newest")
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
+  const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
+
+  // Export
+  const [exporting, setExporting] = useState(false)
 
   // Pagination
   const [page, setPage] = useState(1)
@@ -320,14 +331,46 @@ export function TicketsView() {
   const [boardLoading, setBoardLoading] = useState(false)
 
   const hasFilters =
-    statusFilter !== "all" || priorityFilter !== "all" || categoryFilter !== "all" || !!searchQuery
+    statusFilter !== "all" || priorityFilter !== "all" || categoryFilter !== "all" || !!searchQuery || !!dateFrom || !!dateTo
 
   const clearFilters = useCallback(() => {
     setStatusFilter("all")
     setPriorityFilter("all")
     setCategoryFilter("all")
+    setDateFrom(undefined)
+    setDateTo(undefined)
     setPage(1)
   }, [])
+
+  // Export handler
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      const params = new URLSearchParams()
+      if (statusFilter !== "all") params.set("status", statusFilter)
+      if (priorityFilter !== "all") params.set("priority", priorityFilter)
+      if (categoryFilter !== "all") params.set("category", categoryFilter)
+      if (dateFrom) params.set("dateFrom", dateFrom.toISOString().split("T")[0])
+      if (dateTo) params.set("dateTo", dateTo.toISOString().split("T")[0])
+
+      const res = await fetch(`/api/export?${params.toString()}`)
+      if (!res.ok) throw new Error("Export failed")
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `tickets-export-${new Date().toISOString().split("T")[0]}.csv`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      toast.success("Tickets exported successfully")
+    } catch {
+      toast.error("Failed to export tickets")
+    } finally {
+      setExporting(false)
+    }
+  }
 
   // Fetch categories
   useEffect(() => {
@@ -359,6 +402,8 @@ export function TicketsView() {
       if (priorityFilter !== "all") params.set("priority", priorityFilter)
       if (categoryFilter !== "all") params.set("category", categoryFilter)
       if (searchQuery) params.set("search", searchQuery)
+      if (dateFrom) params.set("dateFrom", dateFrom.toISOString().split("T")[0])
+      if (dateTo) params.set("dateTo", dateTo.toISOString().split("T")[0])
 
       switch (sortBy) {
         case "newest":
@@ -380,7 +425,7 @@ export function TicketsView() {
       }
       return params.toString()
     },
-    [page, statusFilter, priorityFilter, categoryFilter, sortBy, searchQuery]
+    [page, statusFilter, priorityFilter, categoryFilter, sortBy, searchQuery, dateFrom, dateTo]
   )
 
   // Fetch tickets for table view
@@ -522,6 +567,18 @@ export function TicketsView() {
           </Badge>
         </div>
         <div className="flex items-center gap-2">
+          {user && (user.role === "ADMIN" || user.role === "AGENT") && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExport}
+              disabled={exporting}
+              className="h-9"
+            >
+              <Download className="h-4 w-4 mr-1" />
+              {exporting ? "Exporting..." : "Export CSV"}
+            </Button>
+          )}
           <Button
             onClick={() => setIsCreateTicketOpen(true)}
             className="bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -597,6 +654,66 @@ export function TicketsView() {
             <SelectItem value="updated">Last Updated</SelectItem>
           </SelectContent>
         </Select>
+
+        {/* Date From */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="h-9 gap-1.5 text-sm font-normal">
+              <CalendarIcon className="h-3.5 w-3.5" />
+              {dateFrom ? format(dateFrom, "MMM d, yyyy") : "From date"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={dateFrom}
+              onSelect={setDateFrom}
+              initialFocus
+            />
+            {dateFrom && (
+              <div className="px-3 pb-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-muted-foreground"
+                  onClick={() => setDateFrom(undefined)}
+                >
+                  Clear date
+                </Button>
+              </div>
+            )}
+          </PopoverContent>
+        </Popover>
+
+        {/* Date To */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="h-9 gap-1.5 text-sm font-normal">
+              <CalendarIcon className="h-3.5 w-3.5" />
+              {dateTo ? format(dateTo, "MMM d, yyyy") : "To date"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={dateTo}
+              onSelect={setDateTo}
+              initialFocus
+            />
+            {dateTo && (
+              <div className="px-3 pb-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-muted-foreground"
+                  onClick={() => setDateTo(undefined)}
+                >
+                  Clear date
+                </Button>
+              </div>
+            )}
+          </PopoverContent>
+        </Popover>
 
         {hasFilters && (
           <Button variant="ghost" size="sm" onClick={clearFilters} className="h-9 text-muted-foreground">

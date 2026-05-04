@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { emitNotification } from "@/lib/notify";
 
 export async function PATCH(
   request: Request,
@@ -87,6 +88,13 @@ export async function PATCH(
 
     // Create notification for assignee
     if (assigneeId && assigneeId !== userId) {
+      const assignNotificationData = {
+        type: "TICKET_ASSIGNED",
+        title: "New Ticket Assigned",
+        message: `You have been assigned ticket ${ticket.ticketId}: ${ticket.title}`,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      };
       await db.notification.create({
         data: {
           type: "TICKET_ASSIGNED",
@@ -96,6 +104,9 @@ export async function PATCH(
           ticketId: id,
         },
       });
+
+      // Emit real-time notification via WebSocket
+      emitNotification(assigneeId, assignNotificationData);
     }
 
     // Create audit log

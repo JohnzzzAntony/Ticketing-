@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { emitNotification } from "@/lib/notify";
 import { TicketStatus, Priority } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 
@@ -215,6 +216,13 @@ export async function POST(request: Request) {
 
     // Create notification for assigned agent
     if (assigneeId) {
+      const notificationData = {
+        type: "TICKET_ASSIGNED",
+        title: "New Ticket Assigned",
+        message: `You have been assigned ticket ${ticketId}: ${title}`,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      };
       await db.notification.create({
         data: {
           type: "TICKET_ASSIGNED",
@@ -224,6 +232,9 @@ export async function POST(request: Request) {
           ticketId: ticket.id,
         },
       });
+
+      // Emit real-time notification via WebSocket
+      emitNotification(assigneeId, notificationData);
 
       await db.activityLog.create({
         data: {

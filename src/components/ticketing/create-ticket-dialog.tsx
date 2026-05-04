@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Loader2, AlertCircle } from 'lucide-react'
+import { toast } from 'sonner'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -148,9 +149,12 @@ export function CreateTicketDialog() {
 
       const ticket = await res.json()
       setIsCreateTicketOpen(false)
+      toast.success(`Ticket ${ticket.ticketId || ticket.id} created`)
       navigateToTicket(ticket.id)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create ticket')
+      const message = err instanceof Error ? err.message : 'Failed to create ticket'
+      setError(message)
+      toast.error(message)
     } finally {
       setLoading(false)
     }

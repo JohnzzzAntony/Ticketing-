@@ -24,6 +24,7 @@ import {
   Check,
   Loader2,
 } from 'lucide-react'
+import { toast } from 'sonner'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -160,8 +161,9 @@ export function NotificationsView() {
       setNotifications((prev) =>
         prev.map((n) => (n.id === notificationId ? { ...n, isRead: true } : n))
       )
+      toast.success('Marked as read')
     } catch {
-      // Silently fail
+      toast.error('Failed to mark as read')
     } finally {
       setMarkingId(null)
     }
@@ -178,8 +180,9 @@ export function NotificationsView() {
       })
       if (!res.ok) throw new Error('Failed to mark all as read')
       setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })))
+      toast.success('All notifications marked as read')
     } catch {
-      // Silently fail
+      toast.error('Failed to mark all as read')
     } finally {
       setMarkingAll(false)
     }

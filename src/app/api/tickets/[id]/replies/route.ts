@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { emitNotification } from "@/lib/notify";
 
 export async function POST(
   request: Request,
@@ -55,6 +56,13 @@ export async function POST(
 
     // Create notification for ticket creator (if not the replier)
     if (ticket.creatorId !== userId) {
+      const creatorNotificationData = {
+        type: "NEW_REPLY",
+        title: "New Reply on Ticket",
+        message: `A new reply has been added to ticket ${ticket.ticketId}`,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      };
       await db.notification.create({
         data: {
           type: "NEW_REPLY",
@@ -64,10 +72,20 @@ export async function POST(
           ticketId: id,
         },
       });
+
+      // Emit real-time notification via WebSocket
+      emitNotification(ticket.creatorId, creatorNotificationData);
     }
 
     // Create notification for assignee (if not the replier)
     if (ticket.assigneeId && ticket.assigneeId !== userId) {
+      const assigneeNotificationData = {
+        type: "NEW_REPLY",
+        title: "New Reply on Assigned Ticket",
+        message: `A new reply has been added to ticket ${ticket.ticketId}`,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      };
       await db.notification.create({
         data: {
           type: "NEW_REPLY",
@@ -77,6 +95,9 @@ export async function POST(
           ticketId: id,
         },
       });
+
+      // Emit real-time notification via WebSocket
+      emitNotification(ticket.assigneeId, assigneeNotificationData);
     }
 
     // Update SLA first response time if not set
