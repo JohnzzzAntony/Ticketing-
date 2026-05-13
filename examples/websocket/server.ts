@@ -115,7 +115,7 @@ io.on('connection', (socket) => {
   })
 })
 
-const PORT = 3003
+const PORT = 3004
 httpServer.listen(PORT, () => {
   console.log(`WebSocket server running on port ${PORT}`)
 })

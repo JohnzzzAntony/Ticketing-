@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Headphones, Loader2, AlertCircle } from "lucide-react";
+import { signIn } from "next-auth/react";
 
 export function LoginForm() {
   const [email, setEmail] = useState("");
@@ -20,15 +21,22 @@ export function LoginForm() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/auth/callback/credentials", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ email, password }),
+      const result = await signIn("credentials", {
+        email,
+        password,
+        redirect: false,
       });
 
-      // Then fetch session
+      if (result?.error) {
+        setError("Invalid credentials");
+        setLoading(false);
+        return;
+      }
+
+      // Fetch session after successful login
       const sessionRes = await fetch("/api/auth/session");
       const session = await sessionRes.json();
+      
       if (session?.user) {
         useAppStore.getState().setUser({
           id: (session.user as any).id,
@@ -38,10 +46,12 @@ export function LoginForm() {
           departmentId: (session.user as any).departmentId,
           departmentName: (session.user as any).departmentName,
         });
+        useAppStore.getState().setIsAuthenticated(true);
       } else {
-        setError("Invalid credentials");
+        setError("Session failed to initialize");
       }
-    } catch {
+    } catch (err) {
+      console.error("Login error:", err);
       setError("Login failed");
     }
     setLoading(false);

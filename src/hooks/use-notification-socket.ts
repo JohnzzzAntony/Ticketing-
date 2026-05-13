@@ -9,8 +9,8 @@ export function useNotificationSocket(userId: string | null) {
   useEffect(() => {
     if (!userId) return;
 
-    // Connect via gateway - use XTransformPort for the gateway
-    const socket = io("/?XTransformPort=3003", {
+    // Connect directly to WebSocket server
+    const socket = io("http://localhost:3004", {
       transports: ["websocket", "polling"],
       autoConnect: true,
       reconnection: true,

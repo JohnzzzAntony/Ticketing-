@@ -315,11 +315,11 @@ export async function seedDatabase() {
   // Create notifications
   await db.notification.createMany({
     data: [
-      { type: "TICKET_ASSIGNED", title: "New Ticket Assigned", message: "You have been assigned ticket TKT-0011: Wi-Fi keeps disconnecting in conference room B", userId: agent1.id, ticketId: "1", isRead: false },
-      { type: "TICKET_CREATED", title: "New Ticket Created", message: "A new ticket has been created in the Network category", userId: admin.id, ticketId: "1", isRead: true },
-      { type: "STATUS_UPDATED", title: "Ticket Status Updated", message: "Ticket TKT-0005 has been resolved", userId: employee5.id, ticketId: "1", isRead: false },
-      { type: "NEW_REPLY", title: "New Reply", message: "A new reply has been added to your ticket TKT-0001", userId: employee1.id, ticketId: "1", isRead: false },
-      { type: "SLA_WARNING", title: "SLA Warning", message: "Ticket TKT-0003 is approaching SLA deadline", userId: agent3.id, ticketId: "1", isRead: false },
+      { type: "TICKET_ASSIGNED", title: "New Ticket Assigned", message: "You have been assigned ticket TKT-0011: Wi-Fi keeps disconnecting in conference room B", userId: agent1.id, isRead: false },
+      { type: "TICKET_CREATED", title: "New Ticket Created", message: "A new ticket has been created in the Network category", userId: admin.id, isRead: true },
+      { type: "STATUS_UPDATED", title: "Ticket Status Updated", message: "Ticket TKT-0005 has been resolved", userId: employee5.id, isRead: false },
+      { type: "NEW_REPLY", title: "New Reply", message: "A new reply has been added to your ticket TKT-0001", userId: employee1.id, isRead: false },
+      { type: "SLA_WARNING", title: "SLA Warning", message: "Ticket TKT-0003 is approaching SLA deadline", userId: agent3.id, isRead: false },
     ],
   });
 
