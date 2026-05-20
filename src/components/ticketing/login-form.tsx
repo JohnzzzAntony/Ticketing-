@@ -138,53 +138,7 @@ export function LoginForm() {
             </Button>
           </form>
         </CardContent>
-        <CardFooter className="flex-col">
-          <Separator className="mb-4" />
-          <div className="w-full space-y-2">
-            <p className="text-xs font-medium text-muted-foreground text-center mb-3">Demo Accounts</p>
-            <div className="grid gap-2">
-              <button
-                type="button"
-                onClick={() => fillDemo("admin@company.com", "password123")}
-                className="flex items-center justify-between rounded-md border border-border/50 bg-muted/40 px-3 py-2 text-xs hover:bg-muted transition-colors"
-              >
-                <span className="flex items-center gap-2">
-                  <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold">
-                    A
-                  </span>
-                  <span className="font-medium text-foreground">Admin</span>
-                </span>
-                <span className="text-muted-foreground">admin@company.com</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => fillDemo("agent@company.com", "password123")}
-                className="flex items-center justify-between rounded-md border border-border/50 bg-muted/40 px-3 py-2 text-xs hover:bg-muted transition-colors"
-              >
-                <span className="flex items-center gap-2">
-                  <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 text-[10px] font-bold">
-                    G
-                  </span>
-                  <span className="font-medium text-foreground">Agent</span>
-                </span>
-                <span className="text-muted-foreground">agent@company.com</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => fillDemo("john@company.com", "password123")}
-                className="flex items-center justify-between rounded-md border border-border/50 bg-muted/40 px-3 py-2 text-xs hover:bg-muted transition-colors"
-              >
-                <span className="flex items-center gap-2">
-                  <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-400 text-[10px] font-bold">
-                    E
-                  </span>
-                  <span className="font-medium text-foreground">Employee</span>
-                </span>
-                <span className="text-muted-foreground">john@company.com</span>
-              </button>
-            </div>
-          </div>
-        </CardFooter>
+
       </Card>
 
       {/* Footer */}

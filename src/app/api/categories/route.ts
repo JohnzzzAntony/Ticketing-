@@ -3,17 +3,26 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const { searchParams } = new URL(request.url);
+    const departmentId = searchParams.get("departmentId");
+
+    const where: any = {};
+    if (departmentId) {
+      where.departmentId = departmentId;
+    }
+
     const categories = await db.category.findMany({
+      where,
       orderBy: { name: "asc" },
       include: {
-        department: { select: { id: true, name: true, description: true } },
+        department: { select: { id: true, name: true, description: true, code: true } },
       },
     });
 
@@ -34,10 +43,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const userRole = (session.user as Record<string, unknown>).role as string;
-    if (userRole !== "ADMIN" && userRole !== "AGENT") {
+    const userRole = (session.user as any).role as string;
+    if (userRole !== "ADMIN" && userRole !== "DEPARTMENT_MANAGER") {
       return NextResponse.json(
-        { error: "Only admins and agents can create categories" },
+        { error: "Only admins and managers can create categories" },
         { status: 403 }
       );
     }
@@ -52,44 +61,10 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check department exists
-    const department = await db.department.findUnique({
-      where: { id: departmentId },
-    });
-    if (!department) {
-      return NextResponse.json(
-        { error: "Department not found" },
-        { status: 404 }
-      );
-    }
-
-    // Check unique name within department
-    const existing = await db.category.findFirst({
-      where: { name, departmentId },
-    });
-    if (existing) {
-      return NextResponse.json(
-        { error: "Category with this name already exists in this department" },
-        { status: 409 }
-      );
-    }
-
     const category = await db.category.create({
       data: { name, description, departmentId },
       include: {
-        department: { select: { id: true, name: true, description: true } },
-      },
-    });
-
-    // Create audit log
-    const userId = (session.user as Record<string, unknown>).id as string;
-    await db.auditLog.create({
-      data: {
-        action: "CATEGORY_CREATED",
-        entity: "Category",
-        entityId: category.id,
-        details: `Category ${name} created`,
-        userId,
+        department: true,
       },
     });
 

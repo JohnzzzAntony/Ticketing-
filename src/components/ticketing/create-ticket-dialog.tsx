@@ -26,11 +26,16 @@ import { toast } from 'sonner'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+interface Department {
+  id: string
+  name: string
+  code: string
+}
+
 interface Category {
   id: string
   name: string
   description: string | null
-  department?: { id: string; name: string } | null
 }
 
 interface Agent {
@@ -48,12 +53,14 @@ export function CreateTicketDialog() {
   // Form state
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [category, setCategory] = useState('')
+  const [departmentId, setDepartmentId] = useState('')
+  const [categoryId, setCategoryId] = useState('')
   const [priority, setPriority] = useState('MEDIUM')
   const [tags, setTags] = useState('')
   const [assigneeId, setAssigneeId] = useState('')
 
   // Data
+  const [departments, setDepartments] = useState<Department[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
 
@@ -62,12 +69,33 @@ export function CreateTicketDialog() {
   const [error, setError] = useState<string | null>(null)
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
 
-  // Fetch categories on open
+  // Fetch departments on open
   useEffect(() => {
     if (!isCreateTicketOpen) return
+    async function fetchDepartments() {
+      try {
+        const res = await fetch('/api/departments')
+        if (res.ok) {
+          const data = await res.json()
+          setDepartments(Array.isArray(data) ? data : [])
+        }
+      } catch {
+        // Silently fail
+      }
+    }
+    fetchDepartments()
+  }, [isCreateTicketOpen])
+
+  // Fetch categories when department changes
+  useEffect(() => {
+    if (!departmentId) {
+      setCategories([])
+      setCategoryId('')
+      return
+    }
     async function fetchCategories() {
       try {
-        const res = await fetch('/api/categories')
+        const res = await fetch(`/api/categories?departmentId=${departmentId}`)
         if (res.ok) {
           const data = await res.json()
           setCategories(Array.isArray(data) ? data : [])
@@ -77,7 +105,7 @@ export function CreateTicketDialog() {
       }
     }
     fetchCategories()
-  }, [isCreateTicketOpen])
+  }, [departmentId])
 
   // Fetch agents on open
   useEffect(() => {
@@ -101,7 +129,8 @@ export function CreateTicketDialog() {
     if (isCreateTicketOpen) {
       setTitle('')
       setDescription('')
-      setCategory('')
+      setDepartmentId('')
+      setCategoryId('')
       setPriority('MEDIUM')
       setTags('')
       setAssigneeId('')
@@ -115,7 +144,8 @@ export function CreateTicketDialog() {
     const errors: Record<string, string> = {}
     if (!title.trim()) errors.title = 'Title is required'
     if (!description.trim()) errors.description = 'Description is required'
-    if (!category) errors.category = 'Category is required'
+    if (!departmentId) errors.departmentId = 'Department is required'
+    if (!categoryId) errors.categoryId = 'Category is required'
     setValidationErrors(errors)
     return Object.keys(errors).length === 0
   }
@@ -135,7 +165,8 @@ export function CreateTicketDialog() {
         body: JSON.stringify({
           title: title.trim(),
           description: description.trim(),
-          category,
+          departmentId,
+          categoryId,
           priority,
           tags: tags.trim(),
           assigneeId: assigneeId || undefined,
@@ -166,12 +197,11 @@ export function CreateTicketDialog() {
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold">Create New Ticket</DialogTitle>
           <DialogDescription>
-            Fill in the details below to create a new support ticket.
+            Choose a department and fill in the details below.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Error message */}
           {error && (
             <div className="flex items-center gap-2 rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2.5 text-sm text-destructive">
               <AlertCircle className="h-4 w-4 shrink-0" />
@@ -200,6 +230,83 @@ export function CreateTicketDialog() {
             )}
           </div>
 
+          {/* Department Selection */}
+          <div className="space-y-2">
+            <Label>
+              Department <span className="text-destructive">*</span>
+            </Label>
+            <Select
+              value={departmentId}
+              onValueChange={(val) => {
+                setDepartmentId(val)
+                if (validationErrors.departmentId) setValidationErrors((prev) => ({ ...prev, departmentId: '' }))
+              }}
+              disabled={loading}
+            >
+              <SelectTrigger className={validationErrors.departmentId ? 'border-destructive' : ''}>
+                <SelectValue placeholder="Select department" />
+              </SelectTrigger>
+              <SelectContent>
+                {departments.map((dept) => (
+                  <SelectItem key={dept.id} value={dept.id}>
+                    {dept.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {validationErrors.departmentId && (
+              <p className="text-xs text-destructive">{validationErrors.departmentId}</p>
+            )}
+          </div>
+
+          {/* Category & Priority row */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Category */}
+            <div className="space-y-2">
+              <Label>
+                Category <span className="text-destructive">*</span>
+              </Label>
+              <Select
+                value={categoryId}
+                onValueChange={(val) => {
+                  setCategoryId(val)
+                  if (validationErrors.categoryId) setValidationErrors((prev) => ({ ...prev, categoryId: '' }))
+                }}
+                disabled={loading || !departmentId}
+              >
+                <SelectTrigger className={validationErrors.categoryId ? 'border-destructive' : ''}>
+                  <SelectValue placeholder={departmentId ? "Select category" : "Select department first"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {validationErrors.categoryId && (
+                <p className="text-xs text-destructive">{validationErrors.categoryId}</p>
+              )}
+            </div>
+
+            {/* Priority */}
+            <div className="space-y-2">
+              <Label>Priority</Label>
+              <Select value={priority} onValueChange={setPriority} disabled={loading}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select priority" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="LOW">Low</SelectItem>
+                  <SelectItem value="MEDIUM">Medium</SelectItem>
+                  <SelectItem value="HIGH">High</SelectItem>
+                  <SelectItem value="URGENT">Urgent</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
           {/* Description */}
           <div className="space-y-2">
             <Label htmlFor="ticket-description">
@@ -222,82 +329,16 @@ export function CreateTicketDialog() {
             )}
           </div>
 
-          {/* Category & Priority row */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Category */}
-            <div className="space-y-2">
-              <Label>
-                Category <span className="text-destructive">*</span>
-              </Label>
-              <Select
-                value={category}
-                onValueChange={(val) => {
-                  setCategory(val)
-                  if (validationErrors.category) setValidationErrors((prev) => ({ ...prev, category: '' }))
-                }}
-                disabled={loading}
-              >
-                <SelectTrigger className={validationErrors.category ? 'border-destructive' : ''}>
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map((cat) => (
-                    <SelectItem key={cat.id} value={cat.name}>
-                      {cat.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {validationErrors.category && (
-                <p className="text-xs text-destructive">{validationErrors.category}</p>
-              )}
-            </div>
-
-            {/* Priority */}
-            <div className="space-y-2">
-              <Label>Priority</Label>
-              <Select value={priority} onValueChange={setPriority} disabled={loading}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select priority" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="LOW">Low</SelectItem>
-                  <SelectItem value="MEDIUM">Medium</SelectItem>
-                  <SelectItem value="HIGH">High</SelectItem>
-                  <SelectItem value="URGENT">Urgent</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
           {/* Tags */}
           <div className="space-y-2">
             <Label htmlFor="ticket-tags">Tags</Label>
             <Input
               id="ticket-tags"
-              placeholder="Comma-separated tags (e.g., bug, urgent, login)"
+              placeholder="Comma-separated tags"
               value={tags}
               onChange={(e) => setTags(e.target.value)}
               disabled={loading}
             />
-            <p className="text-xs text-muted-foreground">Separate tags with commas</p>
-          </div>
-
-          {/* Assign To */}
-          <div className="space-y-2">
-            <Label>Assign To (optional)</Label>
-            <Select value={assigneeId} onValueChange={setAssigneeId} disabled={loading}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select an agent" />
-              </SelectTrigger>
-              <SelectContent>
-                {agents.map((agent) => (
-                  <SelectItem key={agent.id} value={agent.id}>
-                    {agent.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
 
           <DialogFooter className="pt-2">

@@ -9,14 +9,18 @@ datasource db {
 
 enum Role {
   ADMIN
+  DEPARTMENT_MANAGER
   AGENT
   EMPLOYEE
 }
 
 enum TicketStatus {
+  NEW
   OPEN
-  IN_PROGRESS
-  WAITING
+  PENDING_CUSTOMER
+  PENDING_INTERNAL
+  PENDING_APPROVAL
+  ESCALATED
   RESOLVED
   CLOSED
 }
@@ -35,6 +39,15 @@ enum NotificationType {
   NEW_REPLY
   SLA_WARNING
   SLA_BREACHED
+  APPROVAL_REQUESTED
+  APPROVAL_ACTIONED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  NOT_REQUIRED
 }
 
 model User {
@@ -43,8 +56,15 @@ model User {
   name          String
   passwordHash  String
   role          Role         @default(EMPLOYEE)
+  
+  // A user can belong to one primary department, but can be an agent/manager for multiple
   departmentId  String?
-  department    Department?  @relation(fields: [departmentId], references: [id])
+  department    Department?  @relation("UserDepartment", fields: [departmentId], references: [id])
+  
+  // For Agents and Managers: Departments they can manage/work in
+  managedDepartments Department[] @relation("DepartmentManagers")
+  assignedDepartments Department[] @relation("DepartmentAgents")
+
   avatar        String?
   isActive      Boolean      @default(true)
   createdAt     DateTime     @default(now())
@@ -57,19 +77,32 @@ model User {
   notifications   Notification[]
   auditLogs       AuditLog[]
   activityLogs    ActivityLog[]
+  approvals       ApprovalRequest[]
 
   @@map("users")
+  @@index([email])
+  @@index([role])
 }
 
 model Department {
   id          String   @id @default(cuid())
   name        String   @unique
   description String?
+  code        String   @unique // e.g., 'FIN', 'IT', 'HR'
+  
+  // Configurations
+  slaConfig   DepartmentSLAConfig?
+  routingRules String? // JSON string for keywords/auto-routing
+  
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  users      User[]
-  categories Category[]
+  users       User[]       @relation("UserDepartment")
+  managers    User[]       @relation("DepartmentManagers")
+  agents      User[]       @relation("DepartmentAgents")
+  categories  Category[]
+  tickets     Ticket[]
+  customFields DepartmentCustomField[]
 
   @@map("departments")
 }
@@ -80,11 +113,35 @@ model Category {
   description  String?
   departmentId String
   department   Department  @relation(fields: [departmentId], references: [id])
+  
+  // SLA overrides for specific categories
+  responseTimeHours   Int?
+  resolutionTimeHours Int?
+  
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 
+  tickets      Ticket[]
+  slaConfigs   SLAConfig[]
+
   @@unique([name, departmentId])
   @@map("categories")
+}
+
+model DepartmentCustomField {
+  id           String     @id @default(cuid())
+  name         String
+  label        String
+  type         String     // 'text', 'number', 'select', 'date', 'boolean'
+  isRequired   Boolean    @default(false)
+  options      String?    // JSON string for select options
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+  
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@map("department_custom_fields")
 }
 
 model Ticket {
@@ -92,14 +149,27 @@ model Ticket {
   ticketId    String       @unique
   title       String
   description String
-  category    String
+  
+  departmentId String
+  department   Department  @relation(fields: [departmentId], references: [id])
+  
+  categoryId  String
+  category    Category     @relation(fields: [categoryId], references: [id])
+  
   priority    Priority     @default(MEDIUM)
   status      TicketStatus @default(OPEN)
   tags        String       @default("")
+  
+  // JSON field for department-specific data
+  customData  String?      @default("{}")
+  
+  approvalStatus ApprovalStatus @default(NOT_REQUIRED)
+  
   creatorId   String
   creator     User         @relation("TicketCreator", fields: [creatorId], references: [id])
   assigneeId  String?
   assignee    User?        @relation("TicketAssignee", fields: [assigneeId], references: [id])
+  
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
@@ -109,8 +179,36 @@ model Ticket {
   notifications Notification[]
   sla           SLARecord?
   activityLogs  ActivityLog[]
+  approvals     ApprovalRequest[]
 
   @@map("tickets")
+  @@index([status])
+  @@index([priority])
+  @@index([ticketId])
+  @@index([departmentId])
+  @@index([categoryId])
+  @@index([creatorId])
+  @@index([assigneeId])
+  @@index([createdAt])
+}
+
+model ApprovalRequest {
+  id          String         @id @default(cuid())
+  ticketId    String
+  ticket      Ticket         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  approverId  String
+  approver    User           @relation(fields: [approverId], references: [id])
+  status      ApprovalStatus @default(PENDING)
+  comments    String?
+  stepName    String?        // e.g., 'Finance Approval'
+  
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([ticketId])
+  @@index([approverId])
+  @@index([status])
+  @@map("approval_requests")
 }
 
 model Reply {
@@ -123,6 +221,7 @@ model Reply {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([ticketId])
   @@map("replies")
 }
 
@@ -136,6 +235,7 @@ model InternalNote {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([ticketId])
   @@map("internal_notes")
 }
 
@@ -165,6 +265,36 @@ model SLARecord {
   updatedAt        DateTime @updatedAt
 
   @@map("sla_records")
+  @@index([isBreached])
+}
+
+model DepartmentSLAConfig {
+  id                 String     @id @default(cuid())
+  departmentId       String     @unique
+  department         Department @relation(fields: [departmentId], references: [id])
+  
+  defaultResponseTimeHours   Int @default(8)
+  defaultResolutionTimeHours Int @default(48)
+  
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  @@map("department_sla_configs")
+}
+
+model SLAConfig {
+  id                 String   @id @default(cuid())
+  categoryId         String   @unique
+  category           Category @relation(fields: [categoryId], references: [id])
+  
+  responseTimeHours  Int      @default(4)
+  resolutionTimeHours Int     @default(24)
+  priority           Priority @default(MEDIUM)
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@map("sla_configs")
 }
 
 model Notification {
@@ -179,6 +309,8 @@ model Notification {
   isRead     Boolean          @default(false)
   createdAt  DateTime         @default(now())
 
+  @@index([userId])
+  @@index([isRead])
   @@map("notifications")
 }
 
@@ -193,6 +325,7 @@ model ActivityLog {
   createdAt DateTime @default(now())
 
   @@map("activity_logs")
+  @@index([createdAt])
 }
 
 model AuditLog {
@@ -205,6 +338,9 @@ model AuditLog {
   user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
 
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
   @@map("audit_logs")
 }
 
@@ -219,16 +355,4 @@ model KnowledgeBaseArticle {
   updatedAt   DateTime @updatedAt
 
   @@map("knowledge_base_articles")
-}
-
-model SLAConfig {
-  id                 String   @id @default(cuid())
-  category           String   @unique
-  responseTimeHours  Int      @default(4)
-  resolutionTimeHours Int     @default(24)
-  priority           Priority @default(MEDIUM)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-
-  @@map("sla_configs")
 }

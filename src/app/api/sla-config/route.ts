@@ -12,7 +12,8 @@ export async function GET() {
     }
 
     const slaConfigs = await db.sLAConfig.findMany({
-      orderBy: { category: "asc" },
+      include: { category: true },
+      orderBy: { category: { name: "asc" } },
     });
 
     return NextResponse.json(slaConfigs);
@@ -41,11 +42,11 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { category, responseTimeHours, resolutionTimeHours, priority } = body;
+    const { categoryId, responseTimeHours, resolutionTimeHours, priority } = body;
 
-    if (!category || responseTimeHours === undefined || resolutionTimeHours === undefined) {
+    if (!categoryId || responseTimeHours === undefined || resolutionTimeHours === undefined) {
       return NextResponse.json(
-        { error: "Category, responseTimeHours, and resolutionTimeHours are required" },
+        { error: "categoryId, responseTimeHours, and resolutionTimeHours are required" },
         { status: 400 }
       );
     }
@@ -57,14 +58,14 @@ export async function POST(request: Request) {
 
     // Upsert: create or update if category already exists
     const slaConfig = await db.sLAConfig.upsert({
-      where: { category },
+      where: { categoryId },
       update: {
         responseTimeHours: parseInt(String(responseTimeHours)),
         resolutionTimeHours: parseInt(String(resolutionTimeHours)),
         priority: slaPriority,
       },
       create: {
-        category,
+        categoryId,
         responseTimeHours: parseInt(String(responseTimeHours)),
         resolutionTimeHours: parseInt(String(resolutionTimeHours)),
         priority: slaPriority,
@@ -78,7 +79,7 @@ export async function POST(request: Request) {
         action: "SLA_CONFIG_SET",
         entity: "SLAConfig",
         entityId: slaConfig.id,
-        details: `SLA config set for ${category}: response ${responseTimeHours}h, resolution ${resolutionTimeHours}h`,
+        details: `SLA config set for category ${categoryId}: response ${responseTimeHours}h, resolution ${resolutionTimeHours}h`,
         userId,
       },
     });

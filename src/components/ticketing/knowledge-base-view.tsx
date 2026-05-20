@@ -276,7 +276,7 @@ export function KnowledgeBaseView() {
 
           {/* Mobile: Accordion */}
           <div className="md:hidden">
-            <Accordion value={accordionValue} onValueChange={setAccordionValue}>
+            <Accordion type="single" collapsible value={accordionValue} onValueChange={setAccordionValue}>
               {filteredArticles.map((article) => (
                 <AccordionItem key={article.id} value={article.id}>
                   <AccordionTrigger className="text-left text-sm hover:no-underline">

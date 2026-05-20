@@ -2,112 +2,163 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { Prisma } from "@prisma/client";
 
-export async function GET() {
+// Simple in-memory cache
+const cache = new Map<string, { data: any; expiry: number }>();
+const CACHE_TTL = 60 * 1000; // 1 minute
+
+export async function GET(request: Request) {
   try {
     const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-    // Get total tickets count
-    const totalTickets = await db.ticket.count();
+    const { searchParams } = new URL(request.url);
+    const userRole = (session.user as any).role;
+    const userDeptId = (session.user as any).departmentId;
+    
+    let departmentId = searchParams.get("departmentId") || undefined;
+    if (userRole !== "ADMIN") {
+      departmentId = userDeptId || undefined;
+    }
 
-    // Get tickets by status
-    const [openTickets, inProgressTickets, waitingTickets, resolvedTickets, closedTickets] = await Promise.all([
-      db.ticket.count({ where: { status: "OPEN" } }),
-      db.ticket.count({ where: { status: "IN_PROGRESS" } }),
-      db.ticket.count({ where: { status: "WAITING" } }),
-      db.ticket.count({ where: { status: "RESOLVED" } }),
-      db.ticket.count({ where: { status: "CLOSED" } }),
+    // Cache key based on user and department
+    const cacheKey = `dashboard_${departmentId || 'all'}_${userRole}`;
+    const cached = cache.get(cacheKey);
+    if (cached && cached.expiry > Date.now()) {
+      return NextResponse.json(cached.data);
+    }
+
+    const ticketWhere: Prisma.TicketWhereInput = {};
+    const activityWhere: Prisma.ActivityLogWhereInput = {};
+    const slaWhere: Prisma.SLARecordWhereInput = { isBreached: true };
+
+    if (departmentId) {
+      ticketWhere.departmentId = departmentId;
+      activityWhere.ticket = { departmentId };
+      slaWhere.ticket = { departmentId };
+    }
+
+    // 1. Basic Stats
+    const [
+      totalTickets,
+      statusCountsRaw,
+      priorityCountsRaw,
+      slaBreachCount
+    ] = await Promise.all([
+      db.ticket.count({ where: ticketWhere }),
+      db.ticket.groupBy({ by: ['status'], where: ticketWhere, _count: true }),
+      db.ticket.groupBy({ by: ['priority'], where: ticketWhere, _count: true }),
+      db.sLARecord.count({ where: slaWhere }),
     ]);
 
-    // Get tickets by category
-    const ticketsByCategoryRaw = await db.ticket.groupBy({
-      by: ["category"],
-      _count: { id: true },
-      orderBy: { _count: { id: "desc" } },
+    // 2. Category Counts (Optimized)
+    const categoryCountsRaw = await db.ticket.groupBy({
+      by: ['categoryId'],
+      where: ticketWhere,
+      _count: true,
+      orderBy: { _count: { id: 'desc' } },
+      take: 10
     });
-    const ticketsByCategory = ticketsByCategoryRaw.map((item) => ({
-      category: item.category,
-      count: item._count.id,
+
+    const categories = await db.category.findMany({
+      where: { id: { in: categoryCountsRaw.map(c => c.categoryId) } },
+      select: { id: true, name: true }
+    });
+
+    const categoryMap = new Map(categories.map(c => [c.id, c.name]));
+    const ticketsByCategory = categoryCountsRaw.map(c => ({
+      category: categoryMap.get(c.categoryId) || 'Unknown',
+      count: c._count
     }));
 
-    // Get tickets by priority
-    const ticketsByPriorityRaw = await db.ticket.groupBy({
-      by: ["priority"],
-      _count: { id: true },
-      orderBy: { _count: { id: "desc" } },
-    });
-    const ticketsByPriority = ticketsByPriorityRaw.map((item) => ({
-      priority: item.priority.charAt(0) + item.priority.slice(1).toLowerCase(),
-      count: item._count.id,
-    }));
-
-    // Get recent tickets
-    const recentTickets = await db.ticket.findMany({
-      take: 5,
-      orderBy: { createdAt: "desc" },
-      include: {
-        creator: { select: { id: true, name: true, email: true } },
-        assignee: { select: { id: true, name: true, email: true } },
-      },
-    });
-
-    // Get SLA breach count
-    const slaBreachCount = await db.sLARecord.count({ where: { isBreached: true } });
-
-    // Get monthly trend (last 6 months)
+    // 3. Monthly Trends (Optimized with Promise.all)
+    const trendPromises: Promise<{ month: string; count: number }>[] = [];
     const now = new Date();
-    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
-    const monthlyTrendRaw = await db.ticket.findMany({
-      where: { createdAt: { gte: sixMonthsAgo } },
-      select: { createdAt: true },
-    });
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const monthlyMap = new Map<string, number>();
     for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
-      monthlyMap.set(key, 0);
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
+      
+      trendPromises.push(
+        db.ticket.count({
+          where: {
+            ...ticketWhere,
+            createdAt: { gte: startOfMonth, lte: endOfMonth }
+          }
+        }).then(count => ({
+          month: startOfMonth.toLocaleString('default', { month: 'short' }),
+          count
+        }))
+      );
     }
-    for (const t of monthlyTrendRaw) {
-      const key = `${monthNames[t.createdAt.getMonth()]} ${t.createdAt.getFullYear()}`;
-      if (monthlyMap.has(key)) {
-        monthlyMap.set(key, (monthlyMap.get(key) || 0) + 1);
-      }
-    }
-    const monthlyTrend = Array.from(monthlyMap.entries()).map(([month, count]) => ({
-      month: month.split(" ")[0],
-      count,
+    const trendResults = await Promise.all(trendPromises);
+
+    // 4. Recent Data
+    const [recentTickets, recentActivity] = await Promise.all([
+      db.ticket.findMany({
+        where: ticketWhere,
+        take: 5,
+        orderBy: { createdAt: "desc" },
+        include: { 
+          category: { select: { name: true } },
+          creator: { select: { name: true } } 
+        }
+      }),
+      db.activityLog.findMany({
+        where: activityWhere,
+        take: 10,
+        orderBy: { createdAt: "desc" },
+        include: {
+          user: { select: { name: true } },
+          ticket: { select: { ticketId: true } }
+        }
+      })
+    ]);
+
+    // Process status & priority maps
+    const statusMap = {
+      NEW: 0, OPEN: 0, PENDING_CUSTOMER: 0, PENDING_INTERNAL: 0,
+      ESCALATED: 0, RESOLVED: 0, CLOSED: 0,
+    };
+    statusCountsRaw.forEach(row => { statusMap[row.status as keyof typeof statusMap] = row._count; });
+
+    const ticketsByPriority = priorityCountsRaw.map(row => ({
+      priority: row.priority.charAt(0) + row.priority.slice(1).toLowerCase(),
+      count: row._count,
     }));
 
-    // Get recent activity
-    const recentActivity = await db.activityLog.findMany({
-      take: 10,
-      orderBy: { createdAt: "desc" },
-      include: {
-        user: { select: { id: true, name: true } },
-      },
-    });
-
-    return NextResponse.json({
+    const responseData = {
       totalTickets,
-      openTickets,
-      inProgressTickets,
-      waitingTickets,
-      resolvedTickets,
-      closedTickets,
+      ...statusMap,
       ticketsByCategory,
       ticketsByPriority,
-      recentTickets,
+      recentTickets: recentTickets.map(t => ({
+        id: t.id,
+        ticketId: t.ticketId,
+        title: t.title,
+        status: t.status,
+        priority: t.priority,
+        category: t.category.name,
+        createdAt: t.createdAt.toISOString(),
+        creatorName: t.creator.name
+      })),
       slaBreachCount,
-      monthlyTrend,
+      monthlyTrend: trendResults,
       recentActivity: recentActivity.map((a) => ({
         id: a.id,
         action: a.action,
-        description: a.details || a.action,
+        description: a.details || `${a.action.replace(/_/g, ' ')} on ${a.ticket.ticketId}`,
         userName: a.user.name,
         timestamp: a.createdAt.toISOString(),
       })),
-    });
+    };
+
+    // Store in cache
+    cache.set(cacheKey, { data: responseData, expiry: Date.now() + CACHE_TTL });
+
+    return NextResponse.json(responseData);
   } catch (error) {
     console.error("Dashboard API error:", error);
     return NextResponse.json({ error: "Failed to load dashboard data" }, { status: 500 });

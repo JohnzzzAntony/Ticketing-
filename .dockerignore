@@ -1,0 +1,8 @@
+node_modules
+.next
+.git
+.kilo
+scratch
+server.log
+*.db-journal
+.env

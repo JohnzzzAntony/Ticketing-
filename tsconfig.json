@@ -14,6 +14,7 @@
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "react-jsx",
@@ -37,6 +38,14 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    ".kilo",
+    ".next",
+    "agent-ctx",
+    "download",
+    "examples",
+    "mini-services",
+    "scratch",
+    "skills"
   ]
 }

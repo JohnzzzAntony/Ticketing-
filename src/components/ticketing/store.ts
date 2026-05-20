@@ -13,6 +13,7 @@ export type AdminTab =
   | "departments"
   | "users"
   | "sla"
+  | "approvals"
   | "audit-logs";
 
 interface AppState {

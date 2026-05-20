@@ -115,7 +115,7 @@ export async function DELETE(
     const userRole = (session.user as Record<string, unknown>).role as string;
     if (userRole !== "ADMIN") {
       return NextResponse.json(
-        { error: "Only admins can deactivate users" },
+        { error: "Only admins can remove users" },
         { status: 403 }
       );
     }
@@ -123,10 +123,10 @@ export async function DELETE(
     const { id } = await params;
     const userId = (session.user as Record<string, unknown>).id as string;
 
-    // Don't allow deactivating yourself
+    // Don't allow removing yourself
     if (id === userId) {
       return NextResponse.json(
-        { error: "You cannot deactivate your own account" },
+        { error: "You cannot remove your own account" },
         { status: 400 }
       );
     }
@@ -138,7 +138,7 @@ export async function DELETE(
 
     if (!existingUser.isActive) {
       return NextResponse.json(
-        { error: "User is already deactivated" },
+        { error: "User is already removed" },
         { status: 400 }
       );
     }
@@ -158,19 +158,19 @@ export async function DELETE(
     // Create audit log
     await db.auditLog.create({
       data: {
-        action: "USER_DEACTIVATED",
+        action: "USER_REMOVED",
         entity: "User",
         entityId: id,
-        details: `User ${existingUser.email} deactivated`,
+        details: `User ${existingUser.email} removed`,
         userId,
       },
     });
 
     return NextResponse.json(updatedUser);
   } catch (error) {
-    console.error("User deactivation error:", error);
+    console.error("User remove error:", error);
     return NextResponse.json(
-      { error: "Failed to deactivate user" },
+      { error: "Failed to remove user" },
       { status: 500 }
     );
   }

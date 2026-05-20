@@ -45,7 +45,7 @@ export async function PATCH(
             select: {
               assignedTickets: {
                 where: {
-                  status: { in: ["OPEN", "IN_PROGRESS", "WAITING"] },
+                  status: { in: ["NEW", "OPEN", "PENDING_CUSTOMER", "PENDING_INTERNAL", "ESCALATED"] },
                 },
               },
             },

@@ -1,13 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, memo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import {
-  LineChart,
-  Line,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -15,8 +15,6 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
-  AreaChart,
-  Area,
 } from 'recharts'
 import {
   Ticket,
@@ -25,7 +23,17 @@ import {
   CheckCircle,
   AlertTriangle,
   TrendingUp,
+  Building2,
+  Filter,
 } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from './store'
 import { formatDistanceToNow } from 'date-fns'
 
@@ -49,12 +57,13 @@ interface ActivityLog {
 }
 
 interface DashboardData {
-  totalTickets: number
-  openTickets: number
-  inProgressTickets: number
-  waitingTickets: number
-  resolvedTickets: number
-  closedTickets: number
+  NEW: number
+  OPEN: number
+  PENDING_CUSTOMER: number
+  PENDING_INTERNAL: number
+  ESCALATED: number
+  RESOLVED: number
+  CLOSED: number
   ticketsByCategory: { category: string; count: number }[]
   ticketsByPriority: { priority: string; count: number }[]
   recentTickets: TicketItem[]
@@ -140,7 +149,7 @@ function ActivitySkeleton() {
 
 // ── Stat Card ──────────────────────────────────────────────────────────────
 
-function StatCard({
+const StatCard = memo(function StatCard({
   icon,
   label,
   value,
@@ -176,37 +185,39 @@ function StatCard({
       </CardContent>
     </Card>
   )
-}
+})
 
 // ── Main Component ─────────────────────────────────────────────────────────
 
 export function DashboardView() {
-  const [data, setData] = useState<DashboardData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const { setCurrentView } = useAppStore()
+  const { setCurrentView, user } = useAppStore()
+  const [departmentId, setDepartmentId] = useState<string | undefined>(undefined)
+  const [departments, setDepartments] = useState<{id: string, name: string}[]>([])
+  const mounted = true
+
+  const { data, isLoading: loading, error, refetch } = useQuery<DashboardData>({
+    queryKey: ['dashboard', departmentId],
+    queryFn: async () => {
+      const url = departmentId ? `/api/dashboard?departmentId=${departmentId}` : '/api/dashboard'
+      const res = await fetch(url)
+      if (!res.ok) throw new Error('Failed to load dashboard data')
+      return res.json()
+    },
+  })
 
   useEffect(() => {
-    let cancelled = false
-
-    async function fetchDashboard() {
-      try {
-        setLoading(true)
-        setError(null)
-        const res = await fetch('/api/dashboard')
-        if (!res.ok) throw new Error('Failed to load dashboard data')
-        const json: DashboardData = await res.json()
-        if (!cancelled) setData(json)
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Unknown error')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
+    if (user?.role === 'ADMIN') {
+      fetch('/api/departments')
+        .then(res => res.json())
+        .then(data => setDepartments(data.departments || []))
     }
+  }, [user?.role])
 
-    fetchDashboard()
-    return () => { cancelled = true }
-  }, [])
+  // ── Compute helpers ────────────────────────────────────────────────────
+  const maxPriorityCount = useMemo(() =>
+    data ? Math.max(...data.ticketsByPriority.map((p) => p.count), 1) : 1,
+    [data]
+  )
 
   // ── Error state ────────────────────────────────────────────────────────
   if (error) {
@@ -216,7 +227,7 @@ export function DashboardView() {
           <CardContent className="flex flex-col items-center gap-4 p-8 text-center">
             <AlertTriangle className="h-10 w-10 text-destructive" />
             <p className="text-lg font-semibold">Something went wrong</p>
-            <p className="text-sm text-muted-foreground">{error}</p>
+            <p className="text-sm text-muted-foreground">{error instanceof Error ? error.message : 'Failed to load dashboard data'}</p>
             <button
               onClick={() => window.location.reload()}
               className="mt-2 rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 transition-colors"
@@ -260,39 +271,63 @@ export function DashboardView() {
     )
   }
 
-  // ── Compute helpers ────────────────────────────────────────────────────
-  const maxPriorityCount = Math.max(...data.ticketsByPriority.map((p) => p.count), 1)
-
   // ── Render ─────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6 p-6">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Dashboard Overview</h1>
+          <p className="text-sm text-muted-foreground">
+            {departmentId 
+              ? `Real-time analytics for ${departments.find(d => d.id === departmentId)?.name}`
+              : 'Real-time analytics across all departments'}
+          </p>
+        </div>
+        
+        {user?.role === 'ADMIN' && (
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <Select value={departmentId || "all"} onValueChange={(v) => setDepartmentId(v === "all" ? undefined : v)}>
+              <SelectTrigger className="w-[200px] h-9 rounded-xl bg-background border-2 font-medium">
+                <SelectValue placeholder="All Departments" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Departments</SelectItem>
+                {departments.map(dept => (
+                  <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </div>
+
       {/* ── Stats Row ──────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
-          icon={<Ticket className="h-6 w-6 text-emerald-700 dark:text-emerald-300" />}
-          label="Total Tickets"
-          value={data.totalTickets}
-          change={12.5}
-          iconBg="bg-emerald-100 dark:bg-emerald-900/40"
+          icon={<Ticket className="h-6 w-6 text-slate-700 dark:text-slate-300" />}
+          label="New Tickets"
+          value={data.NEW}
+          iconBg="bg-slate-100 dark:bg-slate-900/40"
         />
         <StatCard
-          icon={<CircleDot className="h-6 w-6 text-teal-700 dark:text-teal-300" />}
+          icon={<CircleDot className="h-6 w-6 text-blue-700 dark:text-blue-300" />}
           label="Open Tickets"
-          value={data.openTickets}
-          iconBg="bg-teal-100 dark:bg-teal-900/40"
+          value={data.OPEN}
+          iconBg="bg-blue-100 dark:bg-blue-900/40"
         />
         <StatCard
-          icon={<Clock className="h-6 w-6 text-emerald-700 dark:text-emerald-300" />}
-          label="In Progress"
-          value={data.inProgressTickets}
-          iconBg="bg-emerald-100 dark:bg-emerald-900/40"
+          icon={<AlertTriangle className="h-6 w-6 text-red-700 dark:text-red-300" />}
+          label="Escalated"
+          value={data.ESCALATED}
+          iconBg="bg-red-100 dark:bg-red-900/40"
         />
         <StatCard
-          icon={<CheckCircle className="h-6 w-6 text-teal-700 dark:text-teal-300" />}
+          icon={<CheckCircle className="h-6 w-6 text-emerald-700 dark:text-emerald-300" />}
           label="Resolved"
-          value={data.resolvedTickets}
+          value={data.RESOLVED}
           change={8.2}
-          iconBg="bg-teal-100 dark:bg-teal-900/40"
+          iconBg="bg-emerald-100 dark:bg-emerald-900/40"
         />
       </div>
 
@@ -414,7 +449,7 @@ export function DashboardView() {
                         <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
                           <span className="font-medium">{activity.userName}</span>
                           <span>·</span>
-                          <span>{formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true })}</span>
+                          <span>{mounted ? formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true }) : '...'}</span>
                         </div>
                       </div>
                     </div>

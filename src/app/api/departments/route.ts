@@ -45,11 +45,11 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { name, description } = body;
+    const { name, description, code } = body;
 
-    if (!name) {
+    if (!name || !code) {
       return NextResponse.json(
-        { error: "Name is required" },
+        { error: "Name and code are required" },
         { status: 400 }
       );
     }
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
     }
 
     const department = await db.department.create({
-      data: { name, description },
+      data: { name: name.trim(), code: code.trim().toUpperCase(), description },
       include: {
         _count: { select: { users: true, categories: true } },
       },

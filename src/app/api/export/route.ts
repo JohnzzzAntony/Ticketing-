@@ -23,7 +23,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
     const priority = searchParams.get("priority");
-    const category = searchParams.get("category");
+    const categoryId = searchParams.get("categoryId") || searchParams.get("category");
     const dateFrom = searchParams.get("dateFrom");
     const dateTo = searchParams.get("dateTo");
 
@@ -37,8 +37,8 @@ export async function GET(request: Request) {
       where.priority = priority as Priority;
     }
 
-    if (category) {
-      where.category = category;
+    if (categoryId) {
+      where.categoryId = categoryId;
     }
 
     if (dateFrom || dateTo) {
@@ -57,6 +57,7 @@ export async function GET(request: Request) {
       include: {
         creator: { select: { name: true, email: true } },
         assignee: { select: { name: true, email: true } },
+        category: { select: { name: true } },
       },
     });
 
@@ -91,7 +92,7 @@ export async function GET(request: Request) {
           escapeCSV(ticket.ticketId),
           escapeCSV(ticket.title),
           escapeCSV(ticket.description.replace(/[\r\n]+/g, " ")),
-          escapeCSV(ticket.category),
+          escapeCSV(ticket.category.name),
           escapeCSV(ticket.priority),
           escapeCSV(ticket.status),
           escapeCSV(ticket.tags),

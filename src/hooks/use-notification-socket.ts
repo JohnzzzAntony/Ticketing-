@@ -10,7 +10,7 @@ export function useNotificationSocket(userId: string | null) {
     if (!userId) return;
 
     // Connect directly to WebSocket server
-    const socket = io("http://localhost:3004", {
+    const socket = io("http://localhost:3003", {
       transports: ["websocket", "polling"],
       autoConnect: true,
       reconnection: true,
